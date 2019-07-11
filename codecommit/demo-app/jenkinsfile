@@ -1,0 +1,33 @@
+#!groovy
+
+node {
+
+  step([$class: 'WsCleanup'])
+
+  stage "Checkout Git repo"
+    checkout scm
+    def gitHash = sh returnStdout: true, script:'printf $(git rev-parse --short HEAD)'
+    echo "Proceeding with Git hash: ${gitHash}"
+  
+  stage "Run tests"
+    sh 'docker run -v $(pwd):/app --rm phpunit/phpunit tests/'
+
+  stage "Build RPM"
+    sh '[ -d ./rpm ] || mkdir ./rpm'
+    sh "docker run -v \$(pwd)/src:/data/demo-app -v \$(pwd)/rpm:/data/rpm --rm tenzer/fpm -s dir -t rpm -n demo-app -v ${gitHash} --description \"Demo PHP app\" --directories /var/www/demo-app --package /data/rpm/demo-app-${gitHash}.rpm /data/demo-app=/var/www/ "
+
+  stage "Update YUM repo"
+    sh '[ -d ~/repo/rpm/demo-app/ ] || mkdir -p ~/repo/rpm/demo-app/'
+    sh 'mv ./rpm/*.rpm ~/repo/rpm/demo-app/'
+    sh 'createrepo --update --cachedir ~/repo.cache ~/repo/'
+    sh 'aws s3 sync ~/repo s3://jenkin4sam/ --region ap-southeast-2 --delete --acl public-read'
+
+ stage "Check YUM repo"
+    sh 'yum clean expire-cache --enablerepo=s3-repo >/dev/null'
+    sh 'yum repolist all >/dev/null'
+    sh 'yum info demo-app-$(git rev-parse --short HEAD) --enablerepo=s3-repo'
+
+ stage "Trigger downstream"
+    build job: "demo-app-cdelivery", parameters: [[$class: "StringParameterValue", name: "APP_VERSION", value: "${gitHash}-1"]], wait: false
+
+}

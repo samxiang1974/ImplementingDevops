@@ -1,0 +1,6 @@
+aws-region = "ap-southeast-2"
+vpc-cidr = "10.0.0.0/16"
+vpc-name = "Terraform"
+jenkins-ami-id = "ami-05067171f4230ac41"
+jenkins-instance-type = "t2.micro"
+jenkins-key-name = "samxiang"
